@@ -15,7 +15,7 @@ This app tests all aspects of the USB Chess Clock AIDL interface:
 
 ## Prerequisites
 
-1. **Chessnut App**: The Chessnut app (`com.chessnut.newchessnut`) must be installed on your device
+1. **ChessnutNext App**: ChessnutNext version **0.5.10 or later** (`com.chessnut.newchessnut`) must be installed on your device
 2. **USB Device**: The Chessnut USB chess clock must be connected and have USB permission granted in the Chessnut app
 3. **Android Version**: Android 11+ (API 30+) recommended, minimum SDK 24
 
