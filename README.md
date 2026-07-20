@@ -8,7 +8,7 @@ This app tests all aspects of the USB Chess Clock AIDL interface:
 
 - ✅ Service binding/unbinding
 - ✅ Connection state monitoring
-- ✅ Button event callbacks (LEFT/RIGHT, PRESSED/RELEASED)
+- ✅ Button event callbacks (LEFT/RIGHT)
 - ✅ Active side switching
 - ✅ Real-time event logging
 - ✅ Visual button state indicators
