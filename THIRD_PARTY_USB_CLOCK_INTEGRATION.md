@@ -2,6 +2,9 @@
 
 本文档面向**第三方开发者**，介绍如何在自己的 Android app 中接入 Chessnut 棋钟按钮，读取按钮事件并发送控制命令。
 
+> 当前 AIDL 接口不再提供 `pressed` 参数。旧版客户端必须复制最新的两个
+> `.aidl` 文件并重新编译，否则 Binder 接口签名不兼容。
+
 ## 背景
 
 USB 设备一次只能被一个进程独占。Chessnut app 作为 **broker（代理）**，独占持有 USB 连接，并通过 AIDL 跨进程接口把读写能力开放给其他 app。任意 app 都可绑定，无需授权或签名校验。
@@ -94,7 +97,7 @@ class UsbClockClient(private val context: Context) {
             // 注意：回调在 Binder 线程，更新 UI 需切回主线程
         }
 
-        override fun onButtonEvent(side: Int, pressed: Boolean, timestamp: Long) {
+        override fun onButtonEvent(side: Int, timestamp: Long) {
             // side: 0 = LEFT, 1 = RIGHT
         }
 
@@ -134,11 +137,11 @@ class UsbClockClient(private val context: Context) {
     /** 获取连接状态：0=未连接, 1=连接中, 2=已连接 */
     fun getConnectionState(): Int = service?.connectionState ?: 0
 
-    /** 主动发起连接 */
-    fun connect(): Boolean = service?.connect() ?: false
-
     /** 切换激活侧：0=LEFT, 1=RIGHT */
     fun setActiveSide(side: Int): Boolean = service?.setActiveSide(side) ?: false
+
+    /** 当前激活侧：0=LEFT, 1=RIGHT, -1=UNKNOWN */
+    fun getActiveSide(): Int = service?.activeSide ?: -1
 }
 ```
 
@@ -163,15 +166,15 @@ client.unbind()
 | `registerListener(listener)` | 注册事件回调 | void |
 | `unregisterListener(listener)` | 注销事件回调 | void |
 | `getConnectionState()` | 当前连接状态 | `0`=DISCONNECTED, `1`=CONNECTING, `2`=CONNECTED |
-| `connect()` | 主动发起连接 | `boolean` 是否已连接/已发起 |
 | `setActiveSide(side)` | 切换激活侧（控制 LED/指示） | `boolean` 命令是否发送成功 |
+| `getActiveSide()` | 获取当前激活侧 | `0`=LEFT, `1`=RIGHT, `-1`=UNKNOWN |
 
 ### IUsbClockListener（事件回调）
 
 | 方法 | 参数 | 说明 |
 |------|------|------|
 | `onConnectionStateChanged(state)` | `state`: 0/1/2 | 连接状态变化。注册时会立即回报一次当前状态 |
-| `onButtonEvent(side, pressed, timestamp)` | `side`: 0=LEFT 1=RIGHT；`pressed`: 是否按下；`timestamp`: 毫秒 | 按钮事件 |
+| `onButtonEvent(side, timestamp)` | `side`: 0=LEFT 1=RIGHT；`timestamp`: 毫秒 | 激活侧变化事件 |
 | `onError(error)` | `error`: 错误描述 | 错误回调 |
 
 ### 常量对照
@@ -180,6 +183,7 @@ client.unbind()
 |------|----|
 | 按钮 LEFT | `0` |
 | 按钮 RIGHT | `1` |
+| 激活侧 UNKNOWN | `-1` |
 | 状态 DISCONNECTED | `0` |
 | 状态 CONNECTING | `1` |
 | 状态 CONNECTED | `2` |
@@ -187,7 +191,7 @@ client.unbind()
 ## 注意事项
 
 - **回调线程**：`IUsbClockListener` 的回调运行在 Binder 线程池，不是主线程。更新 UI 请用 `Handler(Looper.getMainLooper())` 或 `runOnUiThread` 切回主线程。
-- **事件去重**：broker 按设备上报频率原样广播按钮事件（设备会持续上报当前状态），如只关心"状态变化"需自行做去重。
+- **事件语义**：设备只上报当前左/右状态，没有独立的按下/释放值；broker 仅在状态变化时发送 `onButtonEvent`。需要随时同步状态时调用 `getActiveSide()`。
 - **broker 未运行**：若 Chessnut app 从未启动，`BIND_AUTO_CREATE` 会拉起它的 service。但 USB 权限弹窗只能由 Chessnut app 处理，首次使用建议先打开一次 Chessnut app 授权。
 - **多 app 共存**：你注销或进程退出后，`RemoteCallbackList` 会自动清理你的回调，不影响其他 app。
 - **断线重连**：broker 内部已实现 USB 断开后自动重连（含休眠恢复），你只需监听 `onConnectionStateChanged` 即可感知状态。

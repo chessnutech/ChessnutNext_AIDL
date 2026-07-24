@@ -7,7 +7,7 @@ import com.chessnut.chessnutnext.clock.IUsbClockListener;
  */
 interface IUsbClockService {
     /**
-     * Register a listener for button events.
+     * Register a listener for connection and active-side events.
      */
     void registerListener(IUsbClockListener listener);
 
@@ -23,15 +23,15 @@ interface IUsbClockService {
     int getConnectionState();
 
     /**
-     * Initiate connection to the USB device.
-     * @return true if connected or connection initiated
-     */
-    boolean connect();
-
-    /**
      * Switch the active side (controls LED/indicator).
      * @param side 0=LEFT, 1=RIGHT
      * @return true if command was sent successfully
      */
     boolean setActiveSide(int side);
+
+    /**
+     * Get the current active side.
+     * @return 0=LEFT, 1=RIGHT, -1=UNKNOWN
+     */
+    int getActiveSide();
 }

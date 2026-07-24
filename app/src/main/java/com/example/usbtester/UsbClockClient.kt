@@ -26,6 +26,7 @@ class UsbClockClient(private val context: Context) {
 
         const val SIDE_LEFT = 0
         const val SIDE_RIGHT = 1
+        const val SIDE_UNKNOWN = -1
     }
 
     private var service: IUsbClockService? = null
@@ -34,7 +35,7 @@ class UsbClockClient(private val context: Context) {
     // Callback interface for event notifications
     interface EventCallback {
         fun onConnectionStateChanged(state: Int)
-        fun onButtonEvent(side: Int, pressed: Boolean, timestamp: Long)
+        fun onButtonEvent(side: Int, timestamp: Long)
         fun onError(error: String)
     }
 
@@ -46,9 +47,9 @@ class UsbClockClient(private val context: Context) {
             eventCallback?.onConnectionStateChanged(state)
         }
 
-        override fun onButtonEvent(side: Int, pressed: Boolean, timestamp: Long) {
-            Log.d(TAG, "Button event - side: $side, pressed: $pressed, timestamp: $timestamp")
-            eventCallback?.onButtonEvent(side, pressed, timestamp)
+        override fun onButtonEvent(side: Int, timestamp: Long) {
+            Log.d(TAG, "Active side changed - side: $side, timestamp: $timestamp")
+            eventCallback?.onButtonEvent(side, timestamp)
         }
 
         override fun onError(error: String?) {
@@ -140,28 +141,14 @@ class UsbClockClient(private val context: Context) {
 
     /**
      * Get current connection state.
-     * @return 0=DISCONNECTED, 1=CONNECTING, 2=CONNECTED, or -1 if service not available
+     * @return 0=DISCONNECTED, 1=CONNECTING, 2=CONNECTED
      */
     fun getConnectionState(): Int {
         return try {
-            service?.connectionState ?: -1
+            service?.connectionState ?: STATE_DISCONNECTED
         } catch (e: RemoteException) {
             Log.e(TAG, "Failed to get connection state", e)
-            -1
-        }
-    }
-
-    /**
-     * Initiate a connection to the USB device.
-     * @return true if connected or connection initiated
-     */
-    fun connect(): Boolean {
-        return try {
-            service?.connect() ?: false
-        } catch (e: RemoteException) {
-            Log.e(TAG, "Failed to connect", e)
-            eventCallback?.onError("Failed to connect: ${e.message}")
-            false
+            STATE_DISCONNECTED
         }
     }
 
@@ -177,6 +164,19 @@ class UsbClockClient(private val context: Context) {
             Log.e(TAG, "Failed to set active side", e)
             eventCallback?.onError("Failed to set active side: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Get the current active side.
+     * @return 0=LEFT, 1=RIGHT, -1=UNKNOWN
+     */
+    fun getActiveSide(): Int {
+        return try {
+            service?.activeSide ?: SIDE_UNKNOWN
+        } catch (e: RemoteException) {
+            Log.e(TAG, "Failed to get active side", e)
+            SIDE_UNKNOWN
         }
     }
 

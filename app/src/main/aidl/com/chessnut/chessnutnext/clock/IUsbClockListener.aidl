@@ -1,7 +1,7 @@
 package com.chessnut.chessnutnext.clock;
 
 /**
- * Event callback interface for USB clock button events.
+ * Event callback interface for USB clock connection and active-side events.
  * Callbacks run on a Binder thread pool, not the main thread.
  */
 interface IUsbClockListener {
@@ -12,12 +12,11 @@ interface IUsbClockListener {
     void onConnectionStateChanged(int state);
 
     /**
-     * Button event received.
+     * Active-side change event received.
      * @param side 0=LEFT, 1=RIGHT
-     * @param pressed true if pressed, false if released
      * @param timestamp event timestamp in milliseconds
      */
-    void onButtonEvent(int side, boolean pressed, long timestamp);
+    void onButtonEvent(int side, long timestamp);
 
     /**
      * Error occurred.

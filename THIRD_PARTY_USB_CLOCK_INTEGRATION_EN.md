@@ -2,6 +2,10 @@
 
 This document is for **third-party developers** who want to integrate the Chessnut chess clock buttons into their own Android app — reading button events and sending control commands.
 
+> The current AIDL interface no longer exposes a `pressed` parameter. Existing
+> clients must copy both updated `.aidl` files and rebuild because the Binder
+> interface signature is not backward-compatible.
+
 ## Background
 
 A USB device can only be claimed exclusively by one process at a time. The Chessnut app acts as a **broker**: it holds the USB connection exclusively and exposes read/write capabilities to other apps through an AIDL cross-process interface. Any app may bind, with no authorization or signature check required.
@@ -94,7 +98,7 @@ class UsbClockClient(private val context: Context) {
             // Note: callbacks run on a Binder thread; switch to the main thread to update UI.
         }
 
-        override fun onButtonEvent(side: Int, pressed: Boolean, timestamp: Long) {
+        override fun onButtonEvent(side: Int, timestamp: Long) {
             // side: 0 = LEFT, 1 = RIGHT
         }
 
@@ -134,11 +138,11 @@ class UsbClockClient(private val context: Context) {
     /** Connection state: 0=disconnected, 1=connecting, 2=connected */
     fun getConnectionState(): Int = service?.connectionState ?: 0
 
-    /** Initiate a connection */
-    fun connect(): Boolean = service?.connect() ?: false
-
     /** Switch active side: 0=LEFT, 1=RIGHT */
     fun setActiveSide(side: Int): Boolean = service?.setActiveSide(side) ?: false
+
+    /** Current active side: 0=LEFT, 1=RIGHT, -1=UNKNOWN */
+    fun getActiveSide(): Int = service?.activeSide ?: -1
 }
 ```
 
@@ -163,15 +167,15 @@ client.unbind()
 | `registerListener(listener)` | Register an event callback | void |
 | `unregisterListener(listener)` | Unregister an event callback | void |
 | `getConnectionState()` | Current connection state | `0`=DISCONNECTED, `1`=CONNECTING, `2`=CONNECTED |
-| `connect()` | Initiate a connection | `boolean` — whether connected/initiated |
 | `setActiveSide(side)` | Switch active side (controls LED/indicator) | `boolean` — whether the command was sent |
+| `getActiveSide()` | Get the current active side | `0`=LEFT, `1`=RIGHT, `-1`=UNKNOWN |
 
 ### IUsbClockListener (event callbacks)
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
 | `onConnectionStateChanged(state)` | `state`: 0/1/2 | Connection state changed. The current state is reported once immediately on registration. |
-| `onButtonEvent(side, pressed, timestamp)` | `side`: 0=LEFT 1=RIGHT; `pressed`: whether pressed; `timestamp`: milliseconds | Button event |
+| `onButtonEvent(side, timestamp)` | `side`: 0=LEFT 1=RIGHT; `timestamp`: milliseconds | Active-side change event |
 | `onError(error)` | `error`: error description | Error callback |
 
 ### Constant Reference
@@ -180,6 +184,7 @@ client.unbind()
 |---------|-------|
 | Button LEFT | `0` |
 | Button RIGHT | `1` |
+| Active side UNKNOWN | `-1` |
 | State DISCONNECTED | `0` |
 | State CONNECTING | `1` |
 | State CONNECTED | `2` |
@@ -187,7 +192,7 @@ client.unbind()
 ## Notes
 
 - **Callback thread**: `IUsbClockListener` callbacks run on a Binder thread pool, not the main thread. Use `Handler(Looper.getMainLooper())` or `runOnUiThread` to update the UI.
-- **Event de-duplication**: The broker rebroadcasts button events at the device's reporting rate (the device continuously reports its current state). If you only care about "state changes," de-duplicate on your side.
+- **Event semantics**: The device reports only the current left/right state; it has no separate press/release value. The broker emits `onButtonEvent` only when that state changes. Call `getActiveSide()` whenever you need to synchronize the current state directly.
 - **Broker not running**: If the Chessnut app has never started, `BIND_AUTO_CREATE` will start its service. However, the USB permission dialog can only be handled by the Chessnut app, so for first use it's recommended to open the Chessnut app once to grant permission.
 - **Multi-app coexistence**: After you unregister or your process exits, `RemoteCallbackList` automatically cleans up your callback without affecting other apps.
 - **Auto-reconnect**: The broker internally handles USB auto-reconnect (including recovery from sleep). You only need to listen to `onConnectionStateChanged` to observe state.

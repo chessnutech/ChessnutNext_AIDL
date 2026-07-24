@@ -34,9 +34,7 @@ class MainActivity : ComponentActivity() {
     private var isServiceAvailable by mutableStateOf(false)
     private var connectionState by mutableStateOf(-1)
     private var eventLog by mutableStateOf<List<String>>(emptyList())
-    private var lastLeftButtonState by mutableStateOf(false)
-    private var lastRightButtonState by mutableStateOf(false)
-    private var activeSide by mutableStateOf(0)
+    private var activeSide by mutableStateOf(UsbClockClient.SIDE_UNKNOWN)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,18 +49,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                override fun onButtonEvent(side: Int, pressed: Boolean, timestamp: Long) {
+                override fun onButtonEvent(side: Int, timestamp: Long) {
                     mainHandler.post {
-                        val sideStr = if (side == UsbClockClient.SIDE_LEFT) "LEFT" else "RIGHT"
-                        val action = if (pressed) "PRESSED" else "RELEASED"
-                        addLog("Button $sideStr $action at ${formatTimestamp(timestamp)}")
-
-                        // Update button state
-                        if (side == UsbClockClient.SIDE_LEFT) {
-                            lastLeftButtonState = pressed
-                        } else {
-                            lastRightButtonState = pressed
-                        }
+                        activeSide = side
+                        addLog("Active side changed to ${sideToString(side)} at ${formatTimestamp(timestamp)}")
                     }
                 }
 
@@ -109,7 +99,11 @@ class MainActivity : ComponentActivity() {
             isServiceAvailable = usbClockClient.isServiceAvailable()
             if (isServiceAvailable) {
                 connectionState = usbClockClient.getConnectionState()
-                addLog("Service available, connection state: ${stateToString(connectionState)}")
+                activeSide = usbClockClient.getActiveSide()
+                addLog(
+                    "Service available, connection state: ${stateToString(connectionState)}, " +
+                        "active side: ${sideToString(activeSide)}"
+                )
             }
         }, 500)
     }
@@ -121,13 +115,8 @@ class MainActivity : ComponentActivity() {
             isServiceBound = false
             isServiceAvailable = false
             connectionState = -1
+            activeSide = UsbClockClient.SIDE_UNKNOWN
         }
-    }
-
-    private fun connectDevice() {
-        addLog("Requesting device connection...")
-        val result = usbClockClient.connect()
-        addLog(if (result) "Connect command sent" else "Connect command failed")
     }
 
     private fun switchSide(side: Int) {
@@ -144,8 +133,10 @@ class MainActivity : ComponentActivity() {
 
     private fun queryState() {
         val state = usbClockClient.getConnectionState()
+        val side = usbClockClient.getActiveSide()
         connectionState = state
-        addLog("Query result: ${stateToString(state)}")
+        activeSide = side
+        addLog("Query result: ${stateToString(state)}, active side: ${sideToString(side)}")
     }
 
     private fun clearLog() {
@@ -163,6 +154,13 @@ class MainActivity : ComponentActivity() {
         UsbClockClient.STATE_CONNECTED -> "CONNECTED (2)"
         -1 -> "UNKNOWN (-1)"
         else -> "INVALID ($state)"
+    }
+
+    private fun sideToString(side: Int): String = when (side) {
+        UsbClockClient.SIDE_LEFT -> "LEFT (0)"
+        UsbClockClient.SIDE_RIGHT -> "RIGHT (1)"
+        UsbClockClient.SIDE_UNKNOWN -> "UNKNOWN (-1)"
+        else -> "INVALID ($side)"
     }
 
     private fun formatTimestamp(timestamp: Long): String {
@@ -193,8 +191,8 @@ class MainActivity : ComponentActivity() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Button States
-            ButtonStatesCard()
+            // Current active side
+            ActiveSideCard()
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -271,7 +269,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ButtonStatesCard() {
+    fun ActiveSideCard() {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -280,7 +278,7 @@ class MainActivity : ComponentActivity() {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Button States",
+                    text = "Active Side: ${sideToString(activeSide)}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -290,15 +288,15 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    ButtonStateIndicator("LEFT", lastLeftButtonState, activeSide == UsbClockClient.SIDE_LEFT)
-                    ButtonStateIndicator("RIGHT", lastRightButtonState, activeSide == UsbClockClient.SIDE_RIGHT)
+                    SideIndicator("LEFT", activeSide == UsbClockClient.SIDE_LEFT)
+                    SideIndicator("RIGHT", activeSide == UsbClockClient.SIDE_RIGHT)
                 }
             }
         }
     }
 
     @Composable
-    fun ButtonStateIndicator(label: String, pressed: Boolean, isActive: Boolean) {
+    fun SideIndicator(label: String, isActive: Boolean) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -306,11 +304,7 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier
                     .size(80.dp)
                     .background(
-                        color = when {
-                            pressed -> Color(0xFF4CAF50)
-                            isActive -> Color(0xFFFFA726)
-                            else -> Color(0xFFE0E0E0)
-                        },
+                        color = if (isActive) Color(0xFF4CAF50) else Color(0xFFE0E0E0),
                         shape = RoundedCornerShape(8.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -319,12 +313,12 @@ class MainActivity : ComponentActivity() {
                     text = label,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = if (pressed || isActive) Color.White else Color.Black
+                    color = if (isActive) Color.White else Color.Black
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = if (pressed) "PRESSED" else "RELEASED",
+                text = if (isActive) "ACTIVE" else "INACTIVE",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -367,24 +361,17 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Device control
+                // State query
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { connectDevice() },
-                        modifier = Modifier.weight(1f),
-                        enabled = isServiceAvailable
-                    ) {
-                        Text("Connect")
-                    }
-                    Button(
                         onClick = { queryState() },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         enabled = isServiceAvailable
                     ) {
-                        Text("Query State")
+                        Text("Query Connection & Active Side")
                     }
                 }
 

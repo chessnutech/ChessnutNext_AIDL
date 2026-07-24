@@ -8,14 +8,14 @@ This app tests all aspects of the USB Chess Clock AIDL interface:
 
 - ✅ Service binding/unbinding
 - ✅ Connection state monitoring
-- ✅ Button event callbacks (LEFT/RIGHT)
+- ✅ Active-side change callbacks (LEFT/RIGHT)
 - ✅ Active side switching
 - ✅ Real-time event logging
-- ✅ Visual button state indicators
+- ✅ Visual active-side indicators
 
 ## Prerequisites
 
-1. **ChessnutNext App**: ChessnutNext version **0.5.10 or later** (`com.chessnut.newchessnut`) must be installed on your device
+1. **ChessnutNext App**: ChessnutNext version **0.5.11 or later** (`com.chessnut.newchessnut`) must be installed on your device
 2. **USB Device**: The Chessnut USB chess clock must be connected and have USB permission granted in the Chessnut app
 3. **Android Version**: Android 11+ (API 30+) recommended, minimum SDK 24
 
@@ -54,21 +54,20 @@ The app automatically binds to the service when started. The UI provides:
 - Shows service availability
 - Displays current connection state (DISCONNECTED/CONNECTING/CONNECTED)
 
-#### **Button States Card**
-- Visual indicators for LEFT and RIGHT buttons
-- Shows PRESSED/RELEASED state in real-time
-- Highlights the currently active side
+#### **Active Side Card**
+- Visual indicators for LEFT and RIGHT sides
+- Shows the current active side in real-time
+- Supports an UNKNOWN state before synchronization
 
 #### **Controls**
 - **Bind/Unbind**: Manually control service binding
-- **Connect**: Initiate USB device connection
-- **Query State**: Query current connection state
+- **Query Connection & Active Side**: Query the current connection and active-side states
 - **Active LEFT/RIGHT**: Switch the active side (controls LED indicator)
 
 #### **Event Log**
 - Real-time log of all events with timestamps
 - Shows connection state changes
-- Shows button press/release events
+- Shows active-side change events
 - Shows errors
 - Displays up to 50 most recent events
 - **Clear** button to reset the log
@@ -79,16 +78,15 @@ The app automatically binds to the service when started. The UI provides:
    - Launch the app → it will automatically bind to the service
    - Check "Service Bound" and "Service Available" indicators turn green
 
-2. **Connect to Device**
-   - Tap **Connect** button
+2. **Wait for Device Connection**
+   - The ChessnutNext broker manages the USB connection automatically
    - Watch connection state change: DISCONNECTED → CONNECTING → CONNECTED
-   - Check event log for state changes
+   - Check the event log for state changes
 
-3. **Test Button Events**
-   - Press LEFT button on the chess clock → should see "Button LEFT PRESSED" in log
-   - Release LEFT button → should see "Button LEFT RELEASED" in log
-   - Repeat for RIGHT button
-   - Visual indicators should update in real-time
+3. **Test Active-Side Events**
+   - Change the chess clock to LEFT → should see "Active side changed to LEFT" in the log
+   - Change the chess clock to RIGHT → should see "Active side changed to RIGHT" in the log
+   - The visual active-side indicator should update in real time
 
 4. **Test Active Side Switching**
    - Tap **Active ← LEFT** → should see active side indicator highlight LEFT
@@ -96,7 +94,7 @@ The app automatically binds to the service when started. The UI provides:
    - LED on the physical device should switch accordingly
 
 5. **Test State Query**
-   - Tap **Query State** → current state appears in log
+   - Tap **Query Connection & Active Side** → both current states appear in the log
 
 ## API Testing Coverage
 
@@ -106,16 +104,16 @@ The app automatically binds to the service when started. The UI provides:
 |--------|---------------|
 | `registerListener()` | ✅ Automatically called on bind |
 | `unregisterListener()` | ✅ Automatically called on unbind |
-| `getConnectionState()` | ✅ Query State button + automatic polling |
-| `connect()` | ✅ Connect button |
+| `getConnectionState()` | ✅ State query + initial synchronization |
 | `setActiveSide(side)` | ✅ Active LEFT/RIGHT buttons |
+| `getActiveSide()` | ✅ State query + initial synchronization |
 
 ### IUsbClockListener Callbacks
 
 | Callback | Test Coverage |
 |----------|---------------|
 | `onConnectionStateChanged(state)` | ✅ Logged with state name |
-| `onButtonEvent(side, pressed, timestamp)` | ✅ Logged with formatted timestamp, visual indicators |
+| `onButtonEvent(side, timestamp)` | ✅ Logged with formatted timestamp and active-side indicator |
 | `onError(error)` | ✅ Logged with ERROR prefix |
 
 ## Troubleshooting
@@ -138,19 +136,19 @@ The app automatically binds to the service when started. The UI provides:
 - Try manually tapping **Unbind** then **Bind**
 - Check logcat for detailed error messages: `adb logcat -s UsbClockClient`
 
-### No Button Events
+### No Active-Side Events
 
-**Symptom**: Connection state is CONNECTED but no button events appear
+**Symptom**: Connection state is CONNECTED but no active-side change events appear
 
 **Solutions**:
 - Verify USB device is physically connected
 - Check USB permission was granted in the Chessnut app
 - Try disconnecting and reconnecting the USB device
-- Open the Chessnut app to verify it can receive button events
+- Open the Chessnut app to verify it can receive active-side changes
 
 ### Connection State Stays DISCONNECTED
 
-**Symptom**: Tap **Connect** but state remains DISCONNECTED
+**Symptom**: The state remains DISCONNECTED
 
 **Solutions**:
 - USB device may not be connected
@@ -163,7 +161,7 @@ The app automatically binds to the service when started. The UI provides:
 ### Threading
 
 - All AIDL callbacks run on **Binder thread pool** (not main thread)
-- `UsbClockClient` uses `Handler(Looper.getMainLooper())` to post events to main thread
+- `MainActivity` uses `Handler(Looper.getMainLooper())` to post events to the main thread
 - MainActivity's callback interface receives events on main thread → safe for UI updates
 
 ### AIDL Package Path
@@ -176,7 +174,7 @@ The AIDL files **must** maintain the exact package path `com.chessnut.chessnutne
 ### Multiple App Support
 
 The broker service supports multiple apps binding simultaneously:
-- All registered apps receive the same button events
+- All registered apps receive the same active-side change events
 - Any app can send control commands
 - Apps don't interfere with each other
 
@@ -195,8 +193,8 @@ adb logcat -c && adb logcat -s UsbClockClient:D
 
 ## Known Limitations
 
-- Button events are broadcast at the device's polling rate (may see duplicates)
-- The test app doesn't implement event de-duplication (shows raw events)
+- The device reports only the current LEFT/RIGHT state, not separate press/release values
+- The broker emits `onButtonEvent` only when the active side changes
 - Event log limited to 50 most recent entries to prevent memory issues
 - Requires Chessnut app to be installed (cannot test without broker)
 
